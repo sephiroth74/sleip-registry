@@ -1,0 +1,59 @@
+name: Publish
+
+# Each version of the registry that has no release yet: its archive packaged
+# again from its commit, alike, and uploaded to a release of its own,
+# `<owner>.<name>.<version>`, which stays as it was once made. It runs no
+# plugin's code: the archive is the commit's files alone.
+on:
+  push:
+    branches: [main]
+    paths: ["plugins/**"]
+  workflow_call:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+    # One at a time, each to its end, so that no release is made twice.
+    concurrency:
+      group: publish
+      cancel-in-progress: false
+    steps:
+      - name: The registry, as main has it now
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Sleip
+        uses: ./.github/actions/sleip
+
+      - name: The releases of the versions that have none
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          sleip --json registry versions | jq -c 'select(.event == "version")' > versions.ndjson
+          while read -r version; do
+            name=$(jq -r .name <<< "$version")
+            number=$(jq -r .version <<< "$version")
+            release=$(jq -r .release <<< "$version")
+            archive=$(jq -r .archive <<< "$version")
+            if gh release view "$release" --repo "$REPO" > /dev/null 2>&1; then
+              continue
+            fi
+            sleip --json registry build "$name" "$number" --out dist > built.ndjson
+            cksum=$(jq -r 'select(.event == "built") | .cksum' built.ndjson)
+            commit=$(jq -r .commit <<< "$version")
+            repository=$(jq -r .repository <<< "$version")
+            gh release create "$release" "dist/$release/$archive" --repo "$REPO" --target main \
+              --title "$name $number" \
+              --notes "$name $number, of $repository at $commit. The archive's checksum: $cksum."
+            echo "Released $name $number: $cksum" >> "$GITHUB_STEP_SUMMARY"
+          done < versions.ndjson

@@ -1,0 +1,132 @@
+name: Pull request
+
+# The check of a pull request that publishes a plugin's versions. It runs
+# the workflow of `main` whatever the pull request changes, as
+# `pull_request_target` does: the pull request's files are read as data, and
+# the plugins' code runs in Sleip's sandbox, in a job that holds no right of
+# the repository's. The report is the pull request's comment; a version that
+# asks for nothing new merges by itself, and is released at once.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: pull-request-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-24.04-arm
+    permissions: {}
+    outputs:
+      verdict: ${{ steps.verify.outputs.verdict }}
+    steps:
+      - name: The registry, as main has it
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: base
+          persist-credentials: false
+
+      - name: The pull request's files
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+          persist-credentials: false
+
+      - name: Sleip
+        uses: ./base/.github/actions/sleip
+
+      - name: The author's organizations
+        id: orgs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          orgs=$(gh api "users/$AUTHOR/orgs" --jq '[.[].login] | join(",")')
+          echo "orgs=$orgs" >> "$GITHUB_OUTPUT"
+
+      - name: Verify
+        id: verify
+        shell: bash
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          ORGS: ${{ steps.orgs.outputs.orgs }}
+        run: |
+          set +e
+          sleip --json registry verify head --base base --author "$AUTHOR" --orgs "$ORGS" \
+            --out "$RUNNER_TEMP/dist" --report report.md > events.ndjson
+          status=$?
+          set -e
+          cat events.ndjson
+          verdict=$(jq -r 'select(.event == "verdict") | .verdict' events.ndjson | tail -n 1)
+          echo "verdict=${verdict:-refused}" >> "$GITHUB_OUTPUT"
+          if [ ! -s report.md ]; then
+            {
+              echo "### Sleip's check: it could not run"
+              echo
+              jq -r 'select(.event == "error") | "- " + .message' events.ndjson
+            } > report.md
+          fi
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: The report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: report
+          path: report.md
+          if-no-files-found: ignore
+
+  report:
+    name: Report and merge
+    needs: verify
+    if: always() && needs.verify.result != 'cancelled' && needs.verify.result != 'skipped'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      merged: ${{ steps.merge.outputs.merged }}
+    steps:
+      - name: The report
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: report
+
+      - name: The report on the pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: gh pr comment "$NUMBER" --repo "$REPO" --body-file report.md --edit-last --create-if-none
+
+      - name: Merge, of a version that asks for nothing new
+        id: merge
+        if: needs.verify.result == 'success' && needs.verify.outputs.verdict == 'merge'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh pr merge "$NUMBER" --repo "$REPO" --squash --match-head-commit "$HEAD"
+          echo "merged=true" >> "$GITHUB_OUTPUT"
+
+  # A merge of the workflow's own token starts no other workflow, so that
+  # the release of what merged by itself is made here.
+  publish:
+    name: Publish
+    needs: report
+    if: needs.report.outputs.merged == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish.yml
