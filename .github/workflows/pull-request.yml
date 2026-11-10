@@ -1,10 +1,11 @@
 name: Pull request
 
-# The check of a pull request that publishes a plugin's versions. It runs
-# the workflow of `main` whatever the pull request changes, as
-# `pull_request_target` does: the pull request's files are read as data, and
-# the plugins' code runs in Sleip's sandbox, in a job that holds no right of
-# the repository's. The report is the pull request's comment; a version that
+# The check of a pull request that publishes a plugin's versions: its own
+# changes, since the commit that it shares with `main`, each judged against
+# `main` as it is now. It runs the workflow of `main` whatever the pull
+# request changes, as `pull_request_target` does: the pull request's files
+# are read as data, and the plugins' code runs in Sleip's sandbox, in a job
+# that holds no right of the repository's. The report is the pull request's comment; a version that
 # asks for nothing new merges by itself, and is released at once.
 on:
   pull_request_target:
@@ -24,10 +25,13 @@ jobs:
     outputs:
       verdict: ${{ steps.verify.outputs.verdict }}
     steps:
+      # Each of its whole history, so that the pull request's own changes
+      # are those since the commit that it shares with main.
       - name: The registry, as main has it
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: base
+          fetch-depth: 0
           persist-credentials: false
 
       - name: The pull request's files
@@ -36,6 +40,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
           path: head
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Sleip
@@ -47,8 +52,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
+        # Of every page, as GitHub gives 30 at a time.
         run: |
-          orgs=$(gh api "users/$AUTHOR/orgs" --jq '[.[].login] | join(",")')
+          orgs=$(gh api --paginate "users/$AUTHOR/orgs" --jq '.[].login' | paste -sd, -)
           echo "orgs=$orgs" >> "$GITHUB_OUTPUT"
 
       - name: Verify

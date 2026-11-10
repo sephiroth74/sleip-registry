@@ -21,8 +21,9 @@ A plugin lives in a public git repository of its own. This repository holds a fi
 
 ## What the pull request's check does
 
+- **The changes**: the pull request's own, since the commit that it shares with `main`, each judged against `main` as it is now, so that a branch made before another plugin's version merged needs no rebase for it; a plugin's file is a plain file, never a link nor a submodule; a file outside `plugins/`, the maintainer reviews.
 - **The owner**: the plugin's owner is the pull request's author, its GitHub account, or an organization that the author is a public member of.
-- **The name**: an owner and a name of lowercase letters, digits and `-`, from a letter, 64 characters at most each; `lokyr/*` is Lokyr's first-party plugins'; a name is unique across owners, as Lokyr knows a plugin by its name alone, so that `acme/hello` and `bob/hello` never meet.
+- **The name**: an owner and a name of lowercase letters, digits and `-`, from a letter, 64 characters at most each; `lokyr/*` is Lokyr's first-party plugins'; a name is unique across owners, as Lokyr knows a plugin by its name alone, so that `acme/hello` and `bob/hello` never meet, against `main`'s plugins and the pull request's together; the first-party plugins' names, as `tabs` or `search`, and those of the app's own commands, as `app`, `window` and `pane`, are Lokyr's.
 - **The versions published** stay as they were: a later version takes a version's place, or its yank, `yanked = true`.
 - **Each new version** is cloned at its tag, which must name its commit; its manifest must be of the plugin's name and of the version; it is checked as `sleip check` checks it, its tests run as `sleip test` runs them, and its archive is packaged.
 - The check tells what it found in a comment of the pull request.
