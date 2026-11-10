@@ -1,11 +1,13 @@
 name: Publish
 
 # Each version of the registry that has no release yet: its archive packaged
-# again from its commit, alike, and uploaded to a release of its own,
-# `<owner>.<name>.<version>`, which stays as it was once made. It runs no
-# plugin's code: the archive is the commit's files alone. Each version on
-# its own: one that fails, as of a tag moved since its merge, is told, the
-# next released, and the job fails at its end; the schedule tries again.
+# again from the commit that its file pins, alike, whatever became of its
+# tag, and uploaded to a release of its own, `<owner>.<name>.<version>`,
+# which stays as it was once made. It runs no plugin's code: the archive is
+# the commit's files alone. Each version on its own: one that fails, as of
+# a repository or a commit gone, is told, the next released, and the job
+# fails at its end; the schedule tries again. A yanked version of no
+# release is skipped: a yank ends a version that can no longer be built.
 on:
   push:
     branches: [main]
@@ -54,7 +56,12 @@ jobs:
             archive=$(jq -r .archive <<< "$version")
             commit=$(jq -r .commit <<< "$version")
             repository=$(jq -r .repository <<< "$version")
+            yanked=$(jq -r .yanked <<< "$version")
             if grep -qxF "$release"$'\tfalse' releases.tsv; then
+              continue
+            fi
+            if [ "$yanked" = true ]; then
+              echo "Skipped, yanked before its release: $name $number" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
             if grep -qxF "$release"$'\ttrue' releases.tsv; then
