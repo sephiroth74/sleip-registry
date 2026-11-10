@@ -3,11 +3,15 @@ name: Publish
 # Each version of the registry that has no release yet: its archive packaged
 # again from its commit, alike, and uploaded to a release of its own,
 # `<owner>.<name>.<version>`, which stays as it was once made. It runs no
-# plugin's code: the archive is the commit's files alone.
+# plugin's code: the archive is the commit's files alone. Each version on
+# its own: one that fails, as of a tag moved since its merge, is told, the
+# next released, and the job fails at its end; the schedule tries again.
 on:
   push:
     branches: [main]
     paths: ["plugins/**"]
+  schedule:
+    - cron: "41 */6 * * *"
   workflow_call:
   workflow_dispatch:
 
@@ -40,20 +44,40 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           sleip --json registry versions | jq -c 'select(.event == "version")' > versions.ndjson
+          # The releases made, and the drafts that a stopped upload left.
+          gh api --paginate "repos/$REPO/releases" --jq '.[] | [.tag_name, .draft] | @tsv' > releases.tsv
+          failed=0
           while read -r version; do
             name=$(jq -r .name <<< "$version")
             number=$(jq -r .version <<< "$version")
             release=$(jq -r .release <<< "$version")
             archive=$(jq -r .archive <<< "$version")
-            if gh release view "$release" --repo "$REPO" > /dev/null 2>&1; then
-              continue
-            fi
-            sleip --json registry build "$name" "$number" --out dist > built.ndjson
-            cksum=$(jq -r 'select(.event == "built") | .cksum' built.ndjson)
             commit=$(jq -r .commit <<< "$version")
             repository=$(jq -r .repository <<< "$version")
-            gh release create "$release" "dist/$release/$archive" --repo "$REPO" --target main \
-              --title "$name $number" \
-              --notes "$name $number, of $repository at $commit. The archive's checksum: $cksum."
-            echo "Released $name $number: $cksum" >> "$GITHUB_STEP_SUMMARY"
+            if grep -qxF "$release"$'\tfalse' releases.tsv; then
+              continue
+            fi
+            if grep -qxF "$release"$'\ttrue' releases.tsv; then
+              gh release delete "$release" --repo "$REPO" --yes
+            fi
+            # Of `&&` alone, as a condition's commands stop at no failure
+            # of `set -e`.
+            if sleip --json registry build "$name" "$number" --out dist > built.ndjson \
+              && cksum=$(jq -r 'select(.event == "built") | .cksum' built.ndjson) \
+              && [ -n "$cksum" ] \
+              && gh release create "$release" "dist/$release/$archive" --repo "$REPO" --target main \
+                --title "$name $number" \
+                --notes "$name $number, of $repository at $commit. The archive's checksum: $cksum."; then
+              echo "Released $name $number: $cksum" >> "$GITHUB_STEP_SUMMARY"
+            else
+              failed=$((failed + 1))
+              message=$(jq -r 'select(.event == "error") | .message' built.ndjson 2> /dev/null | head -n 1)
+              message=${message:-the log of the step tells why}
+              echo "::error::$name $number was not released: $message"
+              echo "Not released, $name $number: $message" >> "$GITHUB_STEP_SUMMARY"
+            fi
           done < versions.ndjson
+          if [ "$failed" -gt 0 ]; then
+            echo "$failed versions were not released; the schedule tries again." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi

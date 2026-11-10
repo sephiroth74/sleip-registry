@@ -72,11 +72,12 @@ jobs:
           cat events.ndjson
           verdict=$(jq -r 'select(.event == "verdict") | .verdict' events.ndjson | tail -n 1)
           echo "verdict=${verdict:-refused}" >> "$GITHUB_OUTPUT"
+          # Its errors as spans of code, of no mention nor HTML, bounded.
           if [ ! -s report.md ]; then
             {
               echo "### Sleip's check: it could not run"
               echo
-              jq -r 'select(.event == "error") | "- " + .message' events.ndjson
+              jq -r 'select(.event == "error") | "- `" + (.message | gsub("[`@<[:cntrl:]]"; " ") | .[0:500]) + "`"' events.ndjson | head -n 50
             } > report.md
           fi
           cat report.md >> "$GITHUB_STEP_SUMMARY"
@@ -114,7 +115,24 @@ jobs:
           NUMBER: ${{ github.event.pull_request.number }}
         run: gh pr comment "$NUMBER" --repo "$REPO" --body-file report.md --edit-last --create-if-none
 
-      - name: Merge, of a version that asks for nothing new
+      # The job that ran the plugins' code decides no merge alone: this one
+      # checks the pull request's files again, of its commit fetched from
+      # GitHub as data, no file of it checked out nor run, that each is a
+      # plugin's file of an owner that the author is, of a version added or
+      # a yank alone.
+      - name: The registry, as main has it
+        if: needs.verify.result == 'success' && needs.verify.outputs.verdict == 'merge'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: base
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Sleip
+        if: needs.verify.result == 'success' && needs.verify.outputs.verdict == 'merge'
+        uses: ./base/.github/actions/sleip
+
+      - name: Merge, of a version that asks for nothing new, its files checked again
         id: merge
         if: needs.verify.result == 'success' && needs.verify.outputs.verdict == 'merge'
         shell: bash
@@ -123,7 +141,26 @@ jobs:
           REPO: ${{ github.repository }}
           NUMBER: ${{ github.event.pull_request.number }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
+          git clone --quiet --no-checkout base head
+          git -C head fetch --quiet --no-tags "https://github.com/$REPO" "+refs/pull/$NUMBER/head:refs/pull/head"
+          if [ "$(git -C head rev-parse refs/pull/head)" != "$HEAD" ]; then
+            echo "The pull request moved past the commit that was checked." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          git -C head update-ref --no-deref HEAD "$HEAD"
+          orgs=$(gh api --paginate "users/$AUTHOR/orgs" --jq '.[].login' | paste -sd, -)
+          set +e
+          sleip --json registry verify head --base base --author "$AUTHOR" --orgs "$orgs" \
+            --out "$RUNNER_TEMP/again" --files-alone > again.ndjson
+          set -e
+          verdict=$(jq -r 'select(.event == "verdict") | .verdict' again.ndjson | tail -n 1)
+          if [ "$verdict" != merge ]; then
+            echo "The check of the files again found the pull request not to merge by itself: ${verdict:-no verdict}." >> "$GITHUB_STEP_SUMMARY"
+            cat again.ndjson
+            exit 1
+          fi
           gh pr merge "$NUMBER" --repo "$REPO" --squash --match-head-commit "$HEAD"
           echo "merged=true" >> "$GITHUB_OUTPUT"
 
