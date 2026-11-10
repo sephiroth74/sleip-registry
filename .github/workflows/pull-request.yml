@@ -6,10 +6,15 @@ name: Pull request
 # request changes, as `pull_request_target` does: the pull request's files
 # are read as data, and the plugins' code runs in Sleip's sandbox, in a job
 # that holds no right of the repository's. The report is the pull request's comment; a version that
-# asks for nothing new merges by itself, and is released at once.
+# asks for nothing new merges by itself, and is released at once. Of the
+# pull requests into main alone: a branch's workflow is the one that runs
+# for a pull request into it, and the workflows of main alone are kept.
+# The jobs that hold the repository's rights take the untrusted job's
+# report as data, bounded, and give their token to `gh` alone.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
+    branches: [main]
 
 permissions: {}
 
@@ -57,30 +62,35 @@ jobs:
           orgs=$(gh api --paginate "users/$AUTHOR/orgs" --jq '.[].login' | paste -sd, -)
           echo "orgs=$orgs" >> "$GITHUB_OUTPUT"
 
+      # Of the account whose push or action started it too: one that is
+      # not the author's, the maintainer reviews.
       - name: Verify
         id: verify
         shell: bash
         env:
           AUTHOR: ${{ github.event.pull_request.user.login }}
+          SENDER: ${{ github.event.sender.login }}
           ORGS: ${{ steps.orgs.outputs.orgs }}
         run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          report="$RUNNER_TEMP/report/report.md"
           set +e
-          sleip --json registry verify head --base base --author "$AUTHOR" --orgs "$ORGS" \
-            --out "$RUNNER_TEMP/dist" --report report.md > events.ndjson
+          sleip --json registry verify head --base base --author "$AUTHOR" --sender "$SENDER" \
+            --orgs "$ORGS" --out "$RUNNER_TEMP/dist" --report "$report" > events.ndjson
           status=$?
           set -e
           cat events.ndjson
           verdict=$(jq -r 'select(.event == "verdict") | .verdict' events.ndjson | tail -n 1)
           echo "verdict=${verdict:-refused}" >> "$GITHUB_OUTPUT"
           # Its errors as spans of code, of no mention nor HTML, bounded.
-          if [ ! -s report.md ]; then
+          if [ ! -s "$report" ]; then
             {
               echo "### Sleip's check: it could not run"
               echo
               jq -r 'select(.event == "error") | "- `" + (.message | gsub("[`@<[:cntrl:]]"; " ") | .[0:500]) + "`"' events.ndjson | head -n 50
-            } > report.md
+            } > "$report"
           fi
-          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
       - name: The report
@@ -88,7 +98,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: report
-          path: report.md
+          path: ${{ runner.temp }}/report/report.md
           if-no-files-found: ignore
 
   report:
@@ -102,10 +112,28 @@ jobs:
     outputs:
       merged: ${{ steps.merge.outputs.merged }}
     steps:
+      # The job that ran the plugins' code made it: into a folder of its
+      # own, out of the workspace, where no checkout nor command of this
+      # job reads it.
       - name: The report
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
         with:
           name: report
+          path: ${{ runner.temp }}/report
+
+      # Its file of Markdown alone, a plain one, of the most that a
+      # comment holds, no mention of anyone.
+      - name: The comment, of the report
+        shell: bash
+        run: |
+          report="$RUNNER_TEMP/report/report.md"
+          comment="$RUNNER_TEMP/comment.md"
+          if [ -f "$report" ] && [ ! -L "$report" ]; then
+            head -c 60000 "$report" | sed 's/@/@\xE2\x80\x8B/g' > "$comment"
+          else
+            echo "### Sleip's check: no report, as the log of its job tells" > "$comment"
+          fi
 
       - name: The report on the pull request
         shell: bash
@@ -113,13 +141,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           NUMBER: ${{ github.event.pull_request.number }}
-        run: gh pr comment "$NUMBER" --repo "$REPO" --body-file report.md --edit-last --create-if-none
+        run: gh pr comment "$NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/comment.md" --edit-last --create-if-none
 
       # The job that ran the plugins' code decides no merge alone: this one
       # checks the pull request's files again, of its commit fetched from
       # GitHub as data, no file of it checked out nor run, that each is a
       # plugin's file of an owner that the author is, of a version added or
-      # a yank alone.
+      # a yank alone, pushed by the author.
       - name: The registry, as main has it
         if: needs.verify.result == 'success' && needs.verify.outputs.verdict == 'merge'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -132,16 +160,29 @@ jobs:
         if: needs.verify.result == 'success' && needs.verify.outputs.verdict == 'merge'
         uses: ./base/.github/actions/sleip
 
-      - name: Merge, of a version that asks for nothing new, its files checked again
-        id: merge
+      - name: The author's organizations
+        id: orgs
         if: needs.verify.result == 'success' && needs.verify.outputs.verdict == 'merge'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          orgs=$(gh api --paginate "users/$AUTHOR/orgs" --jq '.[].login' | paste -sd, -)
+          echo "orgs=$orgs" >> "$GITHUB_OUTPUT"
+
+      # Of no token: the repository is public.
+      - name: The files checked again
+        id: again
+        if: needs.verify.result == 'success' && needs.verify.outputs.verdict == 'merge'
+        shell: bash
+        env:
           REPO: ${{ github.repository }}
           NUMBER: ${{ github.event.pull_request.number }}
           HEAD: ${{ github.event.pull_request.head.sha }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
+          SENDER: ${{ github.event.sender.login }}
+          ORGS: ${{ steps.orgs.outputs.orgs }}
         run: |
           git clone --quiet --no-checkout base head
           git -C head fetch --quiet --no-tags "https://github.com/$REPO" "+refs/pull/$NUMBER/head:refs/pull/head"
@@ -150,15 +191,31 @@ jobs:
             exit 1
           fi
           git -C head update-ref --no-deref HEAD "$HEAD"
-          orgs=$(gh api --paginate "users/$AUTHOR/orgs" --jq '.[].login' | paste -sd, -)
           set +e
-          sleip --json registry verify head --base base --author "$AUTHOR" --orgs "$orgs" \
-            --out "$RUNNER_TEMP/again" --files-alone > again.ndjson
+          sleip --json registry verify head --base base --author "$AUTHOR" --sender "$SENDER" \
+            --orgs "$ORGS" --out "$RUNNER_TEMP/again" --files-alone > "$RUNNER_TEMP/again.ndjson"
           set -e
-          verdict=$(jq -r 'select(.event == "verdict") | .verdict' again.ndjson | tail -n 1)
+          verdict=$(jq -r 'select(.event == "verdict") | .verdict' "$RUNNER_TEMP/again.ndjson" | tail -n 1)
           if [ "$verdict" != merge ]; then
             echo "The check of the files again found the pull request not to merge by itself: ${verdict:-no verdict}." >> "$GITHUB_STEP_SUMMARY"
-            cat again.ndjson
+            cat "$RUNNER_TEMP/again.ndjson"
+            exit 1
+          fi
+
+      # Into main alone, at the commit that was checked.
+      - name: Merge, of a version that asks for nothing new
+        id: merge
+        if: needs.verify.result == 'success' && needs.verify.outputs.verdict == 'merge'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          into=$(gh pr view "$NUMBER" --repo "$REPO" --json baseRefName --jq .baseRefName)
+          if [ "$into" != main ]; then
+            echo "The pull request merges into $into, not main." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           gh pr merge "$NUMBER" --repo "$REPO" --squash --match-head-commit "$HEAD"

@@ -1,0 +1,6 @@
+# The workflows, their actions and the index keys' list are the
+# maintainer's: a pull request that changes them waits for the maintainer's
+# review, as main's ruleset asks of the code owners, whoever opened it, the
+# workflows' own token among them.
+/.github/ @sephiroth74
+/keys.json @sephiroth74

@@ -39,16 +39,69 @@ jobs:
       - name: Sleip
         uses: ./.github/actions/sleip
 
-      - name: The releases of the versions that have none
+      # The token of the releases to `gh` alone: the archives are built
+      # of the plugins' repositories in a step of none.
+      - name: The versions that have no release
+        shell: bash
+        run: |
+          sleip --json registry versions | jq -c 'select(.event == "version")' > "$RUNNER_TEMP/versions.ndjson"
+
+      - name: The releases made, and the drafts that a stopped upload left
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          sleip --json registry versions | jq -c 'select(.event == "version")' > versions.ndjson
-          # The releases made, and the drafts that a stopped upload left.
-          gh api --paginate "repos/$REPO/releases" --jq '.[] | [.tag_name, .draft] | @tsv' > releases.tsv
+          gh api --paginate "repos/$REPO/releases" --jq '.[] | [.tag_name, .draft] | @tsv' > "$RUNNER_TEMP/releases.tsv"
+          : > "$RUNNER_TEMP/todo.ndjson"
+          while read -r version; do
+            name=$(jq -r .name <<< "$version")
+            number=$(jq -r .version <<< "$version")
+            release=$(jq -r .release <<< "$version")
+            if grep -qxF "$release"$'\tfalse' "$RUNNER_TEMP/releases.tsv"; then
+              continue
+            fi
+            if [ "$(jq -r .yanked <<< "$version")" = true ]; then
+              echo "Skipped, yanked before its release: $name $number" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            if grep -qxF "$release"$'\ttrue' "$RUNNER_TEMP/releases.tsv"; then
+              gh release delete "$release" --repo "$REPO" --yes
+            fi
+            echo "$version" >> "$RUNNER_TEMP/todo.ndjson"
+          done < "$RUNNER_TEMP/versions.ndjson"
+
+      - name: The archives, of the plugins' repositories
+        shell: bash
+        run: |
+          : > "$RUNNER_TEMP/built.ndjson"
           failed=0
+          while read -r version; do
+            name=$(jq -r .name <<< "$version")
+            number=$(jq -r .version <<< "$version")
+            # Of `&&` alone, as a condition's commands stop at no failure
+            # of `set -e`.
+            if sleip --json registry build "$name" "$number" --out "$RUNNER_TEMP/dist" > "$RUNNER_TEMP/build.ndjson" \
+              && cksum=$(jq -r 'select(.event == "built") | .cksum' "$RUNNER_TEMP/build.ndjson") \
+              && [ -n "$cksum" ]; then
+              jq -c --arg cksum "$cksum" '. + {cksum: $cksum}' <<< "$version" >> "$RUNNER_TEMP/built.ndjson"
+            else
+              failed=$((failed + 1))
+              message=$(jq -r 'select(.event == "error") | .message' "$RUNNER_TEMP/build.ndjson" 2> /dev/null | head -n 1)
+              message=${message:-the log of the step tells why}
+              echo "::error::$name $number was not built: $message"
+              echo "Not released, $name $number: $message" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done < "$RUNNER_TEMP/todo.ndjson"
+          echo "$failed" > "$RUNNER_TEMP/failed"
+
+      - name: The releases of the archives
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          failed=$(cat "$RUNNER_TEMP/failed")
           while read -r version; do
             name=$(jq -r .name <<< "$version")
             number=$(jq -r .version <<< "$version")
@@ -56,34 +109,17 @@ jobs:
             archive=$(jq -r .archive <<< "$version")
             commit=$(jq -r .commit <<< "$version")
             repository=$(jq -r .repository <<< "$version")
-            yanked=$(jq -r .yanked <<< "$version")
-            if grep -qxF "$release"$'\tfalse' releases.tsv; then
-              continue
-            fi
-            if [ "$yanked" = true ]; then
-              echo "Skipped, yanked before its release: $name $number" >> "$GITHUB_STEP_SUMMARY"
-              continue
-            fi
-            if grep -qxF "$release"$'\ttrue' releases.tsv; then
-              gh release delete "$release" --repo "$REPO" --yes
-            fi
-            # Of `&&` alone, as a condition's commands stop at no failure
-            # of `set -e`.
-            if sleip --json registry build "$name" "$number" --out dist > built.ndjson \
-              && cksum=$(jq -r 'select(.event == "built") | .cksum' built.ndjson) \
-              && [ -n "$cksum" ] \
-              && gh release create "$release" "dist/$release/$archive" --repo "$REPO" --target main \
-                --title "$name $number" \
-                --notes "$name $number, of $repository at $commit. The archive's checksum: $cksum."; then
+            cksum=$(jq -r .cksum <<< "$version")
+            if gh release create "$release" "$RUNNER_TEMP/dist/$release/$archive" --repo "$REPO" --target main \
+              --title "$name $number" \
+              --notes "$name $number, of $repository at $commit. The archive's checksum: $cksum."; then
               echo "Released $name $number: $cksum" >> "$GITHUB_STEP_SUMMARY"
             else
               failed=$((failed + 1))
-              message=$(jq -r 'select(.event == "error") | .message' built.ndjson 2> /dev/null | head -n 1)
-              message=${message:-the log of the step tells why}
-              echo "::error::$name $number was not released: $message"
-              echo "Not released, $name $number: $message" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::$name $number was not released"
+              echo "Not released, $name $number: its release could not be made" >> "$GITHUB_STEP_SUMMARY"
             fi
-          done < versions.ndjson
+          done < "$RUNNER_TEMP/built.ndjson"
           if [ "$failed" -gt 0 ]; then
             echo "$failed versions were not released; the schedule tries again." >> "$GITHUB_STEP_SUMMARY"
             exit 1
@@ -114,21 +150,25 @@ jobs:
       - name: Sleip
         uses: ./.github/actions/sleip
 
+      - name: The registry's versions
+        shell: bash
+        run: |
+          sleip --json registry versions | jq -c 'select(.event == "version")' > "$RUNNER_TEMP/versions.ndjson"
+
       - name: The archives of the releases
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          gh api --paginate "repos/$REPO/releases" --jq '.[] | select(.draft | not) | .tag_name' > released.txt
-          sleip --json registry versions | jq -c 'select(.event == "version")' > versions.ndjson
+          gh api --paginate "repos/$REPO/releases" --jq '.[] | select(.draft | not) | .tag_name' > "$RUNNER_TEMP/released.txt"
           while read -r version; do
             release=$(jq -r .release <<< "$version")
             archive=$(jq -r .archive <<< "$version")
-            if grep -qxF "$release" released.txt; then
+            if grep -qxF "$release" "$RUNNER_TEMP/released.txt"; then
               gh release download "$release" --repo "$REPO" --pattern "$archive" --dir "archives/$release"
             fi
-          done < versions.ndjson
+          done < "$RUNNER_TEMP/versions.ndjson"
 
       - name: The index, signed
         shell: bash

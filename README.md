@@ -32,7 +32,7 @@ The plugins published, as the registry's signed index holds them, which its CI w
 ## What the pull request's check does
 
 - **The changes**: the pull request's own, since the commit that it shares with `main`, each judged against `main` as it is now, so that a branch made before another plugin's version merged needs no rebase for it; a plugin's file is a plain file, never a link nor a submodule; a file outside `plugins/`, the maintainer reviews.
-- **The owner**: the plugin's owner is the pull request's author, its GitHub account, or an organization that the author is a public member of.
+- **The owner**: the plugin's owner is the pull request's author, its GitHub account, or an organization that the author is a public member of; a push to the pull request of another account than the author's, the maintainer reviews.
 - **The name**: an owner and a name of lowercase letters, digits and `-`, from a letter, 64 characters at most each; `lokyr/*` is Lokyr's first-party plugins'; a name is unique across owners, as Lokyr knows a plugin by its name alone, so that `acme/hello` and `bob/hello` never meet, against `main`'s plugins and the pull request's together; the first-party plugins' names, as `tabs` or `search`, and those of the app's own commands, as `app`, `window` and `pane`, are Lokyr's.
 - **The versions published** stay as they were: a later version takes a version's place, or its yank, `yanked = true`.
 - **Each new version** is cloned at its tag, which must name its commit; its manifest must be of the plugin's name and of the version; it is checked as `sleip check` checks it, its tests run as `sleip test` runs them, and its archive is packaged.
@@ -43,6 +43,7 @@ The plugins published, as the registry's signed index holds them, which its CI w
 - A new plugin, the maintainer reviews.
 - A new version that asks for nothing that the version published last did not, no capability, no host, path or variable of one, and no command in `[uses] commands`, merges by itself; one that asks for more, the maintainer reviews.
 - A yank merges by itself; a change of anything else, the maintainer reviews.
+- The workflows, their actions and `keys.json` are the maintainer's, as `.github/CODEOWNERS` says: a pull request that changes them waits for the maintainer's review, whoever opened it.
 
 ## The archives
 
@@ -54,7 +55,7 @@ After the releases, the CI of `main` writes the registry's index, which Sleip re
 
 ## Sleip in the CI
 
-The checks run a build of Sleip for Linux, a release of this repository, which `.github/actions/sleip/action.yml` pins by its SHA-256.
+The checks run a build of Sleip for Linux, a release of this repository, which `.github/actions/sleip/action.yml` pins by its SHA-256. The job that runs a pull request's plugins' code, of Luau's interpreter alone, holds no right of the repository's; the jobs that comment, merge and release take its report as data, out of their workspace, and give their token to `gh` alone.
 
 ## License
 
