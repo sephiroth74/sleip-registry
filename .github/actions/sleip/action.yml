@@ -10,8 +10,8 @@ runs:
     - name: Sleip, checked against its SHA-256
       shell: bash
       env:
-        URL: https://github.com/sephiroth74/sleip-registry/releases/download/sleip-7c27d4bd94/sleip-aarch64-linux
-        SHA256: 43565a654e0535abdd1eeb8e32fbcfe7105c4d562aec2dc1d9bcd39cd5422c40
+        URL: https://github.com/sephiroth74/sleip-registry/releases/download/sleip-158fb231d7/sleip-aarch64-linux
+        SHA256: d4edb077912c018886bf040165a180347694880e7245c087cf7f0a0c3dcf6dcd
       run: |
         mkdir -p "$RUNNER_TEMP/sleip"
         curl --fail --silent --show-error --location --retry 3 "$URL" --output "$RUNNER_TEMP/sleip/sleip"

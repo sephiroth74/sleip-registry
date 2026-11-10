@@ -88,3 +88,58 @@ jobs:
             echo "$failed versions were not released; the schedule tries again." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
+
+  # The index of the versions released, signed by the index key, which the
+  # environment of main alone holds; kept for the site. It runs after the
+  # releases, whichever failed, as the index lists those made alone.
+  index:
+    name: Index
+    needs: publish
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04-arm
+    environment: index
+    permissions:
+      contents: read
+    concurrency:
+      group: index
+      cancel-in-progress: false
+    steps:
+      - name: The registry, as main has it now
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Sleip
+        uses: ./.github/actions/sleip
+
+      - name: The archives of the releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api --paginate "repos/$REPO/releases" --jq '.[] | select(.draft | not) | .tag_name' > released.txt
+          sleip --json registry versions | jq -c 'select(.event == "version")' > versions.ndjson
+          while read -r version; do
+            release=$(jq -r .release <<< "$version")
+            archive=$(jq -r .archive <<< "$version")
+            if grep -qxF "$release" released.txt; then
+              gh release download "$release" --repo "$REPO" --pattern "$archive" --dir "archives/$release"
+            fi
+          done < versions.ndjson
+
+      - name: The index, signed
+        shell: bash
+        env:
+          SLEIP_INDEX_KEY: ${{ secrets.SLEIP_INDEX_KEY }}
+        run: |
+          sleip registry index --archives archives --out site
+          echo "Signed the index of $(find site/index -type f | wc -l) plugins." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The index, kept for the site
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: index
+          path: site
+          if-no-files-found: error

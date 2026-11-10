@@ -38,7 +38,9 @@ A plugin lives in a public git repository of its own. This repository holds a fi
 
 As a version merges, the CI packages its archive again from its commit, alike, and uploads it to a release of this repository of its own, `<owner>.<name>.<version>`, which stays as it was whatever later happens to the plugin's repository.
 
-The registry's signed index, which Sleip reads, and its site at `pkg.lokyr.dev` come next.
+## The index
+
+After the releases, the CI of `main` writes the registry's index, which Sleip reads: `config.json`, `keys.json` and a file of each plugin, a line of each version released, each file signed whole by the index key, which the environment `index` holds for `main` alone. `keys.json`, in this repository, lists the index keys, signed by the maintainer's root key, which stays offline and whose public part Sleip holds: a host that serves the index cannot change it, and a stolen index key is taken off the list. The index and the registry's site at `pkg.lokyr.dev` come online next.
 
 ## Sleip in the CI
 
