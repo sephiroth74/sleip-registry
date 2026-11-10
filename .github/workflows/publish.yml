@@ -8,6 +8,8 @@ name: Publish
 # a repository or a commit gone, is told, the next released, and the job
 # fails at its end; the schedule tries again. A yanked version of no
 # release is skipped: a yank ends a version that can no longer be built.
+# The index is signed anew at each run, as Sleip refuses one older than a
+# week.
 on:
   push:
     branches: [main]
@@ -322,3 +324,22 @@ jobs:
         run: |
           echo "::error::$FAILED versions failed, of the index or the site: the summary of the index job tells which; their lines signed before are kept."
           exit 1
+
+  # Sleip refuses an index older than a week, which this workflow signs
+  # anew every six hours; GitHub turns a schedule off after 60 days of no
+  # activity of a public repository's, so that each scheduled run turns
+  # it on again, which keeps it.
+  keepalive:
+    name: The schedule kept
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: The workflow turned on again
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: gh api -X PUT "repos/$REPO/actions/workflows/publish.yml/enable"
