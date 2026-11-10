@@ -11,7 +11,11 @@ name: Publish
 on:
   push:
     branches: [main]
-    paths: ["plugins/**"]
+    paths:
+      - "plugins/**"
+      - "keys.json"
+      - ".github/actions/**"
+      - ".github/workflows/publish.yml"
   schedule:
     - cron: "41 */6 * * *"
   workflow_call:
@@ -19,10 +23,15 @@ on:
 
 permissions: {}
 
+# No file of Git LFS fetched, as a package holds none.
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+
 jobs:
   publish:
     name: Publish
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
     permissions:
       contents: write
     # One at a time, each to its end, so that no release is made twice.
@@ -41,10 +50,15 @@ jobs:
 
       # The token of the releases to `gh` alone: the archives are built
       # of the plugins' repositories in a step of none.
+      # A plugin's file that does not read, or of a name that two owners
+      # hold, told as failed, the others released.
       - name: The versions that have no release
         shell: bash
         run: |
-          sleip --json registry versions | jq -c 'select(.event == "version")' > "$RUNNER_TEMP/versions.ndjson"
+          sleip --json registry versions > "$RUNNER_TEMP/listed.ndjson"
+          jq -c 'select(.event == "version")' "$RUNNER_TEMP/listed.ndjson" > "$RUNNER_TEMP/versions.ndjson"
+          jq -r 'select(.event == "failed") | "Not released, " + .name + ": " + .message' "$RUNNER_TEMP/listed.ndjson" >> "$GITHUB_STEP_SUMMARY"
+          jq -s 'map(select(.event == "failed")) | length' "$RUNNER_TEMP/listed.ndjson" > "$RUNNER_TEMP/failed"
 
       - name: The releases made, and the drafts that a stopped upload left
         shell: bash
@@ -75,7 +89,7 @@ jobs:
         shell: bash
         run: |
           : > "$RUNNER_TEMP/built.ndjson"
-          failed=0
+          failed=$(cat "$RUNNER_TEMP/failed")
           while read -r version; do
             name=$(jq -r .name <<< "$version")
             number=$(jq -r .version <<< "$version")
@@ -138,6 +152,7 @@ jobs:
     needs: publish
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     environment: index
     permissions:
       contents: read
@@ -213,11 +228,14 @@ jobs:
   # The README's list of the plugins, of a list that changed: a pull
   # request of the workflow's own, merged at once, as main takes changes of
   # pull requests alone, which starts no other workflow; of a README that
-  # main changed since the index job read it, left to the next run.
+  # main changed since the index job read it, left to the next run. Of an
+  # index written, whichever release failed before it.
   readme:
     name: README
     needs: index
+    if: ${{ !cancelled() && needs.index.result == 'success' }}
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
@@ -241,7 +259,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          RUN: ${{ github.run_id }}
+          RUN: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           if ! cmp -s "$RUNNER_TEMP/readme/README.base.md" README.md; then
             echo "main's README changed since the index was written: the next run lists the plugins." >> "$GITHUB_STEP_SUMMARY"
@@ -261,14 +279,18 @@ jobs:
           url=$(gh pr create --repo "$REPO" --base main --head "$branch" \
             --title "The README's list of the plugins" \
             --body "The list of the plugins, as the registry's signed index holds them, written by its CI.")
-          gh pr merge "$url" --repo "$REPO" --squash --delete-branch
+          # The branch removed by the repository as it merges.
+          gh pr merge "$url" --repo "$REPO" --squash
           echo "The README's list of the plugins changed: $url" >> "$GITHUB_STEP_SUMMARY"
 
-  # The index and the site on GitHub Pages, at pkg.lokyr.dev.
+  # The index and the site on GitHub Pages, at pkg.lokyr.dev, of an index
+  # written, whichever release failed before it.
   pages:
     name: Pages
     needs: index
+    if: ${{ !cancelled() && needs.index.result == 'success' }}
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
     permissions:
       pages: write
       id-token: write
@@ -290,6 +312,7 @@ jobs:
     needs: index
     if: ${{ !cancelled() && needs.index.outputs.failed != '' && needs.index.outputs.failed != '0' }}
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
     permissions: {}
     steps:
       - name: Their number

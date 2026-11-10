@@ -18,6 +18,10 @@ on:
 
 permissions: {}
 
+# No file of Git LFS fetched, as a package holds none.
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+
 concurrency:
   group: pull-request-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -26,6 +30,7 @@ jobs:
   verify:
     name: Verify
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     permissions: {}
     outputs:
       verdict: ${{ steps.verify.outputs.verdict }}
@@ -35,6 +40,7 @@ jobs:
       - name: The registry, as main has it
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
           path: base
           fetch-depth: 0
           persist-credentials: false
@@ -106,6 +112,7 @@ jobs:
     needs: verify
     if: always() && needs.verify.result != 'cancelled' && needs.verify.result != 'skipped'
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: write
@@ -135,14 +142,6 @@ jobs:
             echo "### Sleip's check: no report, as the log of its job tells" > "$comment"
           fi
 
-      - name: The report on the pull request
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          NUMBER: ${{ github.event.pull_request.number }}
-        run: gh pr comment "$NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/comment.md" --edit-last --create-if-none
-
       # The job that ran the plugins' code decides no merge alone: this one
       # checks the pull request's files again, of its commit fetched from
       # GitHub as data, no file of it checked out nor run, that each is a
@@ -154,6 +153,7 @@ jobs:
         if: needs.verify.result == 'success' && needs.verify.outputs.verdict == 'merge'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
           path: base
           fetch-depth: 0
           persist-credentials: false
@@ -222,6 +222,28 @@ jobs:
           fi
           gh pr merge "$NUMBER" --repo "$REPO" --squash --match-head-commit "$HEAD"
           echo "merged=true" >> "$GITHUB_OUTPUT"
+
+      # After the merge's attempt, of its outcome: a pull request that was
+      # to merge by itself and did not is told so.
+      - name: The report on the pull request
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          VERDICT: ${{ needs.verify.result == 'success' && needs.verify.outputs.verdict || '' }}
+          MERGED: ${{ steps.merge.outcome }}
+        run: |
+          comment="$RUNNER_TEMP/comment.md"
+          [ -s "$comment" ] || echo "### Sleip's check: no report, as the log of its job tells" > "$comment"
+          if [ "$VERDICT" = merge ] && [ "$MERGED" != success ]; then
+            {
+              echo
+              echo "**It did not merge by itself**: the check of its files again, or the merge, failed, as the log of the job tells. The maintainer merges it, or a new push checks it again."
+            } >> "$comment"
+          fi
+          gh pr comment "$NUMBER" --repo "$REPO" --body-file "$comment" --edit-last --create-if-none
 
   # A merge of the workflow's own token starts no other workflow, so that
   # the release of what merged by itself is made here, and its index: the
