@@ -14,3 +14,13 @@ commit = "fbf9b3a797ab4ec643dd5e0d680f69cc9dd77f02"
 version = "0.1.2"
 tag = "v0.1.2"
 commit = "f425b8f4d1059890f38eac49a979b291fce27075"
+
+[[versions]]
+version = "0.1.3"
+tag = "v0.1.3"
+commit = "ffe73c5021f8bddf681431f310ba4b170e45d6c7"
+
+[[versions]]
+version = "0.1.4"
+tag = "v0.1.4"
+commit = "8939b4d0b262023675aacb23b12cd5dfa3a184f3"
