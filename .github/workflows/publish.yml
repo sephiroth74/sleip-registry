@@ -149,10 +149,81 @@ jobs:
         shell: bash
         run: pagefind --site site
 
+      # The README's list of the plugins, beside the README that it came
+      # of, which the job of the README's pull request compares with
+      # main's as it is then.
+      - name: The README's list of the plugins
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/readme"
+          cp README.md "$RUNNER_TEMP/readme/README.base.md"
+          sleip registry readme --archives archives --index site
+          cp README.md "$RUNNER_TEMP/readme/README.md"
+
+      - name: The README, kept for its pull request
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: readme
+          path: ${{ runner.temp }}/readme
+
       - name: The site, kept for GitHub Pages
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
+
+  # The README's list of the plugins, of a list that changed: a pull
+  # request of the workflow's own, merged at once, as main takes changes of
+  # pull requests alone, which starts no other workflow; of a README that
+  # main changed since the index job read it, left to the next run.
+  readme:
+    name: README
+    needs: index
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: readme
+      cancel-in-progress: false
+    steps:
+      - name: The registry, as main has it now
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - name: The README, as the index job wrote it
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: readme
+          path: ${{ runner.temp }}/readme
+
+      - name: A pull request of the list, merged
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.run_id }}
+        run: |
+          if ! cmp -s "$RUNNER_TEMP/readme/README.base.md" README.md; then
+            echo "main's README changed since the index was written: the next run lists the plugins." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if cmp -s "$RUNNER_TEMP/readme/README.md" README.md; then
+            echo "The README's list of the plugins is as it was." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          branch="readme/$RUN"
+          git switch --quiet -c "$branch"
+          cp "$RUNNER_TEMP/readme/README.md" README.md
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -am "The README's list of the plugins"
+          git push --quiet origin "$branch"
+          url=$(gh pr create --repo "$REPO" --base main --head "$branch" \
+            --title "The README's list of the plugins" \
+            --body "The list of the plugins, as the registry's signed index holds them, written by its CI.")
+          gh pr merge "$url" --repo "$REPO" --squash --delete-branch
+          echo "The README's list of the plugins changed: $url" >> "$GITHUB_STEP_SUMMARY"
 
   # The index and the site on GitHub Pages, at pkg.lokyr.dev.
   pages:

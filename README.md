@@ -4,6 +4,14 @@ The registry of plugins for [Lokyr](https://lokyr.dev), a terminal for macOS, fr
 
 A plugin lives in a public git repository of its own. This repository holds a file of each plugin, `plugins/<owner>/<name>.toml`, of its published versions, each of its repository's tag and the tag's commit; publishing a version is a pull request that adds it, which this repository's CI checks, packages and, once merged, releases.
 
+## Plugins
+
+The plugins published, as the registry's signed index holds them, which its CI writes here after each release; [pkg.lokyr.dev](https://pkg.lokyr.dev) shows and searches them.
+
+<!-- plugins:start -->
+No plugin is published yet.
+<!-- plugins:end -->
+
 ## Publishing a version
 
 1. The plugin's repository holds its `plugin.toml` at its root, as `sleip new owner/name` makes it, and passes `sleip check` and `sleip test`.
