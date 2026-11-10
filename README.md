@@ -9,7 +9,9 @@ A plugin lives in a public git repository of its own. This repository holds a fi
 The plugins published, as the registry's signed index holds them, which its CI writes here after each release; [pkg.lokyr.dev](https://pkg.lokyr.dev) shows and searches them.
 
 <!-- plugins:start -->
-No plugin is published yet.
+| Plugin | Version | Description | Capabilities |
+|---|---|---|---|
+| [sephiroth74/hello](https://pkg.lokyr.dev/plugins/sephiroth74/hello/) | 0.1.5 | The registry's plugin of its tests: its command, Say Hello, shows a notice. | clipboard-read, clipboard-write |
 <!-- plugins:end -->
 
 ## Publishing a version
