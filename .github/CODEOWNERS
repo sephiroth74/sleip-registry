@@ -4,4 +4,7 @@
 # workflows' own token among them.
 /.github/ @sephiroth74
 /keys.json @sephiroth74
-# test
+# For a test alone: the README's pull request of the CI waits for the
+# maintainer, which tells whether the review of the code owners holds for a
+# pull request of another author. Taken away after it.
+/README.md @sephiroth74
