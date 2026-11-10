@@ -4,4 +4,3 @@
 # workflows' own token among them.
 /.github/ @sephiroth74
 /keys.json @sephiroth74
-# test
