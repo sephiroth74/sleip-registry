@@ -128,7 +128,11 @@ jobs:
   # The index of the versions released, signed by the index key, which the
   # environment of main alone holds, and the site of it, searched by
   # Pagefind. It runs after the releases, whichever failed, as the index
-  # lists those made alone.
+  # lists those made alone. Of the index deployed, its lines are kept as
+  # they were signed, and the new versions alone are downloaded of their
+  # releases, public, of no token: an asset replaced changes no line. A
+  # version that fails is told, the others published, and the run fails
+  # at its end.
   index:
     name: Index
     needs: publish
@@ -137,6 +141,8 @@ jobs:
     environment: index
     permissions:
       contents: read
+    outputs:
+      failed: ${{ steps.failed.outputs.failed }}
     concurrency:
       group: index
       cancel-in-progress: false
@@ -150,44 +156,37 @@ jobs:
       - name: Sleip
         uses: ./.github/actions/sleip
 
-      - name: The registry's versions
-        shell: bash
-        run: |
-          sleip --json registry versions | jq -c 'select(.event == "version")' > "$RUNNER_TEMP/versions.ndjson"
-
-      - name: The archives of the releases
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          gh api --paginate "repos/$REPO/releases" --jq '.[] | select(.draft | not) | .tag_name' > "$RUNNER_TEMP/released.txt"
-          while read -r version; do
-            release=$(jq -r .release <<< "$version")
-            archive=$(jq -r .archive <<< "$version")
-            if grep -qxF "$release" "$RUNNER_TEMP/released.txt"; then
-              gh release download "$release" --repo "$REPO" --pattern "$archive" --dir "archives/$release"
-            fi
-          done < "$RUNNER_TEMP/versions.ndjson"
-
       - name: The index, signed
         shell: bash
         env:
           SLEIP_INDEX_KEY: ${{ secrets.SLEIP_INDEX_KEY }}
         run: |
-          sleip registry index --archives archives --out site
-          echo "Signed the index of $(find site/index -type f | wc -l) plugins." >> "$GITHUB_STEP_SUMMARY"
+          sleip --json registry index --archives "$RUNNER_TEMP/archives" --out "$RUNNER_TEMP/site" \
+            --deployed https://pkg.lokyr.dev > "$RUNNER_TEMP/index.ndjson"
+          cat "$RUNNER_TEMP/index.ndjson"
+          echo "Signed the index of $(find "$RUNNER_TEMP/site/index" -type f | wc -l) plugins, of $(find "$RUNNER_TEMP/archives" -type f 2> /dev/null | wc -l) archives downloaded." >> "$GITHUB_STEP_SUMMARY"
 
       - name: The site, of a page of each plugin
         shell: bash
-        run: sleip registry site --archives archives --out site
+        run: |
+          sleip --json registry site --archives "$RUNNER_TEMP/archives" --out "$RUNNER_TEMP/site" > "$RUNNER_TEMP/site.ndjson"
+          cat "$RUNNER_TEMP/site.ndjson"
+
+      - name: The versions that failed
+        id: failed
+        shell: bash
+        run: |
+          jq -r 'select(.event == "failed") | "Failed, " + .name + " " + (.version // "") + ": " + .message' \
+            "$RUNNER_TEMP/index.ndjson" "$RUNNER_TEMP/site.ndjson" | head -n 100 >> "$GITHUB_STEP_SUMMARY"
+          failed=$(jq -s 'map(select(.event == "failed")) | length' "$RUNNER_TEMP/index.ndjson" "$RUNNER_TEMP/site.ndjson")
+          echo "failed=$failed" >> "$GITHUB_OUTPUT"
 
       - name: Pagefind
         uses: ./.github/actions/pagefind
 
       - name: The site's search
         shell: bash
-        run: pagefind --site site
+        run: pagefind --site "$RUNNER_TEMP/site"
 
       # The README's list of the plugins, beside the README that it came
       # of, which the job of the README's pull request compares with
@@ -197,7 +196,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/readme"
           cp README.md "$RUNNER_TEMP/readme/README.base.md"
-          sleip registry readme --archives archives --index site
+          sleip registry readme --index "$RUNNER_TEMP/site"
           cp README.md "$RUNNER_TEMP/readme/README.md"
 
       - name: The README, kept for its pull request
@@ -209,7 +208,7 @@ jobs:
       - name: The site, kept for GitHub Pages
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: site
+          path: ${{ runner.temp }}/site
 
   # The README's list of the plugins, of a list that changed: a pull
   # request of the workflow's own, merged at once, as main takes changes of
@@ -283,3 +282,20 @@ jobs:
       - name: The site, on GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  # The run fails of the versions that the index or the site told as
+  # failed, once the rest is published.
+  failed:
+    name: The versions that failed
+    needs: index
+    if: ${{ !cancelled() && needs.index.outputs.failed != '' && needs.index.outputs.failed != '0' }}
+    runs-on: ubuntu-24.04-arm
+    permissions: {}
+    steps:
+      - name: Their number
+        shell: bash
+        env:
+          FAILED: ${{ needs.index.outputs.failed }}
+        run: |
+          echo "::error::$FAILED versions failed, of the index or the site: the summary of the index job tells which; their lines signed before are kept."
+          exit 1
