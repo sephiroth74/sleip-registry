@@ -11,7 +11,7 @@ The plugins published, as the registry's signed index holds them, which its CI w
 <!-- plugins:start -->
 | Plugin | Version | Description | Capabilities |
 |---|---|---|---|
-| [sephiroth74/hello](https://pkg.lokyr.dev/plugins/sephiroth74/hello/) | 0.1.9 | The registry's plugin of its tests: its command, Say Hello, shows a notice. | clipboard-read, clipboard-write |
+| [sephiroth74/hello](https://pkg.lokyr.dev/plugins/sephiroth74/hello/) | 0.1.10 | The registry's plugin of its tests: its command, Say Hello, shows a notice. | clipboard-read, clipboard-write |
 <!-- plugins:end -->
 
 ## Publishing a version
