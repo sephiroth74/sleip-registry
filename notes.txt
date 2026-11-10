@@ -1,0 +1,1 @@
+A file beside the plugin's, which no version merges with.

@@ -9,3 +9,8 @@ commit = "50339af1102fdc6cd0e74fda4f089974a715a89c"
 version = "0.1.1"
 tag = "v0.1.1"
 commit = "fbf9b3a797ab4ec643dd5e0d680f69cc9dd77f02"
+
+[[versions]]
+version = "0.1.2"
+tag = "v0.1.2"
+commit = "f425b8f4d1059890f38eac49a979b291fce27075"
