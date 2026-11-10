@@ -24,3 +24,14 @@ commit = "ffe73c5021f8bddf681431f310ba4b170e45d6c7"
 version = "0.1.4"
 tag = "v0.1.4"
 commit = "8939b4d0b262023675aacb23b12cd5dfa3a184f3"
+
+[[versions]]
+version = "0.1.5"
+tag = "v0.1.5"
+commit = "b75505f8d1858f0aa2392b1331ca36fe19b478ab"
+
+[[versions]]
+version = "0.1.6"
+tag = "v0.1.6"
+commit = "b3ac8d592872b92adacd9f85fc78e7475d0209da"
+yanked = true
