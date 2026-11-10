@@ -147,7 +147,9 @@ jobs:
       # checks the pull request's files again, of its commit fetched from
       # GitHub as data, no file of it checked out nor run, that each is a
       # plugin's file of an owner that the author is, of a version added or
-      # a yank alone, pushed by the author.
+      # a yank alone, pushed by the author, and weighs what each new
+      # version asks for against the last published, their manifests read
+      # of git's objects of the plugins' repositories, no checkout.
       - name: The registry, as main has it
         if: needs.verify.result == 'success' && needs.verify.outputs.verdict == 'merge'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
