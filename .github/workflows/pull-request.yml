@@ -165,7 +165,9 @@ jobs:
           echo "merged=true" >> "$GITHUB_OUTPUT"
 
   # A merge of the workflow's own token starts no other workflow, so that
-  # the release of what merged by itself is made here.
+  # the release of what merged by itself is made here, and its index: the
+  # called workflow, main's as this one is, takes the secrets, the index
+  # key of its environment among them, which it reaches of none else.
   publish:
     name: Publish
     needs: report
@@ -173,3 +175,4 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/publish.yml
+    secrets: inherit
