@@ -90,8 +90,9 @@ jobs:
           fi
 
   # The index of the versions released, signed by the index key, which the
-  # environment of main alone holds; kept for the site. It runs after the
-  # releases, whichever failed, as the index lists those made alone.
+  # environment of main alone holds, and the site of it, searched by
+  # Pagefind. It runs after the releases, whichever failed, as the index
+  # lists those made alone.
   index:
     name: Index
     needs: publish
@@ -137,9 +138,37 @@ jobs:
           sleip registry index --archives archives --out site
           echo "Signed the index of $(find site/index -type f | wc -l) plugins." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: The index, kept for the site
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - name: The site, of a page of each plugin
+        shell: bash
+        run: sleip registry site --archives archives --out site
+
+      - name: Pagefind
+        uses: ./.github/actions/pagefind
+
+      - name: The site's search
+        shell: bash
+        run: pagefind --site site
+
+      - name: The site, kept for GitHub Pages
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          name: index
           path: site
-          if-no-files-found: error
+
+  # The index and the site on GitHub Pages, at pkg.lokyr.dev.
+  pages:
+    name: Pages
+    needs: index
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: The site, on GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

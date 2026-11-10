@@ -172,7 +172,10 @@ jobs:
     name: Publish
     needs: report
     if: needs.report.outputs.merged == 'true'
+    # Those that the called jobs ask for, the releases' and GitHub Pages'.
     permissions:
       contents: write
+      pages: write
+      id-token: write
     uses: ./.github/workflows/publish.yml
     secrets: inherit

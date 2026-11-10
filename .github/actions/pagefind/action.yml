@@ -1,0 +1,21 @@
+name: Pagefind
+description: >
+  Pagefind, the static search of the registry's site, of its release for
+  Linux on arm64 that this registry pins, checked against its SHA-256 and
+  put on the PATH.
+
+runs:
+  using: composite
+  steps:
+    - name: Pagefind, checked against its SHA-256
+      shell: bash
+      env:
+        URL: https://github.com/Pagefind/pagefind/releases/download/v1.6.0/pagefind-v1.6.0-aarch64-unknown-linux-musl.tar.gz
+        SHA256: ad286f25e3109a2c6c740bb46998f75e1eae93df41f64c4699f0c2bc8db101ce
+      run: |
+        mkdir -p "$RUNNER_TEMP/pagefind"
+        curl --fail --silent --show-error --location --retry 3 "$URL" --output "$RUNNER_TEMP/pagefind.tar.gz"
+        echo "$SHA256  $RUNNER_TEMP/pagefind.tar.gz" | sha256sum --check --quiet
+        tar -xzf "$RUNNER_TEMP/pagefind.tar.gz" -C "$RUNNER_TEMP/pagefind" pagefind
+        echo "$RUNNER_TEMP/pagefind" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/pagefind/pagefind" --version

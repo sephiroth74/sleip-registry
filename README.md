@@ -40,7 +40,7 @@ As a version merges, the CI packages its archive again from its commit, alike, a
 
 ## The index
 
-After the releases, the CI of `main` writes the registry's index, which Sleip reads: `config.json`, `keys.json` and a file of each plugin, a line of each version released, each file signed whole by the index key, which the environment `index` holds for `main` alone. `keys.json`, in this repository, lists the index keys, signed by the maintainer's root key, which stays offline and whose public part Sleip holds: a host that serves the index cannot change it, and a stolen index key is taken off the list. The index and the registry's site at `pkg.lokyr.dev` come online next.
+After the releases, the CI of `main` writes the registry's index, which Sleip reads: `config.json`, `keys.json` and a file of each plugin, a line of each version released, each file signed whole by the index key, which the environment `index` holds for `main` alone. `keys.json`, in this repository, lists the index keys, signed by the maintainer's root key, which stays offline and whose public part Sleip holds: a host that serves the index cannot change it, and a stolen index key is taken off the list. The same CI writes the registry's site of the index, a page of each plugin, of its versions, their capabilities and checksums, and its README, searched by Pagefind, and deploys the site and the index to GitHub Pages, at [pkg.lokyr.dev](https://pkg.lokyr.dev), the index's files at their paths: `config.json`, `keys.json` and `index/<owner>/<name>`.
 
 ## Sleip in the CI
 
