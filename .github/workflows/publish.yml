@@ -20,7 +20,6 @@ on:
       - ".github/workflows/publish.yml"
   schedule:
     - cron: "41 */6 * * *"
-  workflow_call:
   workflow_dispatch:
 
 permissions: {}
@@ -103,7 +102,7 @@ jobs:
               jq -c --arg cksum "$cksum" '. + {cksum: $cksum}' <<< "$version" >> "$RUNNER_TEMP/built.ndjson"
             else
               failed=$((failed + 1))
-              message=$(jq -r 'select(.event == "error") | .message' "$RUNNER_TEMP/build.ndjson" 2> /dev/null | head -n 1)
+              message=$(jq -rs 'map(select(.event == "error"))[0].message // empty' "$RUNNER_TEMP/build.ndjson" 2> /dev/null || true)
               message=${message:-the log of the step tells why}
               echo "::error::$name $number was not built: $message"
               echo "Not released, $name $number: $message" >> "$GITHUB_STEP_SUMMARY"
@@ -160,6 +159,7 @@ jobs:
       contents: read
     outputs:
       failed: ${{ steps.failed.outputs.failed }}
+      readme: ${{ steps.readme.outputs.made }}
     concurrency:
       group: index
       cancel-in-progress: false
@@ -181,6 +181,9 @@ jobs:
           sleip --json registry index --archives "$RUNNER_TEMP/archives" --out "$RUNNER_TEMP/site" \
             --deployed https://pkg.lokyr.dev > "$RUNNER_TEMP/index.ndjson"
           cat "$RUNNER_TEMP/index.ndjson"
+          # keys.json's year nearing its end, which the maintainer signs
+          # anew with the root key.
+          jq -r 'select(.event == "note" and (.message | contains("keys.json"))) | "::warning::" + .message' "$RUNNER_TEMP/index.ndjson"
           echo "Signed the index of $(find "$RUNNER_TEMP/site/index" -type f | wc -l) plugins, of $(find "$RUNNER_TEMP/archives" -type f 2> /dev/null | wc -l) archives downloaded." >> "$GITHUB_STEP_SUMMARY"
 
       - name: The site, of a page of each plugin
@@ -193,8 +196,10 @@ jobs:
         id: failed
         shell: bash
         run: |
-          jq -r 'select(.event == "failed") | "Failed, " + .name + " " + (.version // "") + ": " + .message' \
-            "$RUNNER_TEMP/index.ndjson" "$RUNNER_TEMP/site.ndjson" | head -n 100 >> "$GITHUB_STEP_SUMMARY"
+          # Bounded of jq itself, as a `head` that stops reading fails a
+          # pipe of `pipefail`.
+          jq -rs 'map(select(.event == "failed"))[:100][] | "Failed, " + .name + " " + (.version // "") + ": " + .message' \
+            "$RUNNER_TEMP/index.ndjson" "$RUNNER_TEMP/site.ndjson" >> "$GITHUB_STEP_SUMMARY"
           failed=$(jq -s 'map(select(.event == "failed")) | length' "$RUNNER_TEMP/index.ndjson" "$RUNNER_TEMP/site.ndjson")
           echo "failed=$failed" >> "$GITHUB_OUTPUT"
 
@@ -205,27 +210,35 @@ jobs:
         shell: bash
         run: pagefind --site "$RUNNER_TEMP/site"
 
-      # The README's list of the plugins, beside the README that it came
-      # of, which the job of the README's pull request compares with
-      # main's as it is then.
-      - name: The README's list of the plugins
-        shell: bash
-        run: |
-          mkdir -p "$RUNNER_TEMP/readme"
-          cp README.md "$RUNNER_TEMP/readme/README.base.md"
-          sleip registry readme --index "$RUNNER_TEMP/site"
-          cp README.md "$RUNNER_TEMP/readme/README.md"
-
-      - name: The README, kept for its pull request
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: readme
-          path: ${{ runner.temp }}/readme
-
       - name: The site, kept for GitHub Pages
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: ${{ runner.temp }}/site
+
+      # The README's list of the plugins, beside the README that it came
+      # of, which the job of the README's pull request compares with
+      # main's as it is then; after the site's upload, and of no failure of
+      # the job, as a README of its marks gone wrong is the maintainer's to
+      # fix, not a reason to deploy no index.
+      - name: The README's list of the plugins
+        id: readme
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/readme"
+          cp README.md "$RUNNER_TEMP/readme/README.base.md"
+          if sleip registry readme --index "$RUNNER_TEMP/site"; then
+            cp README.md "$RUNNER_TEMP/readme/README.md"
+            echo "made=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::The README's list of the plugins was not written, as the log of this step tells."
+          fi
+
+      - name: The README, kept for its pull request
+        if: steps.readme.outputs.made == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: readme
+          path: ${{ runner.temp }}/readme
 
   # The README's list of the plugins, of a list that changed: a pull
   # request of the workflow's own, merged at once, as main takes changes of
@@ -235,7 +248,7 @@ jobs:
   readme:
     name: README
     needs: index
-    if: ${{ !cancelled() && needs.index.result == 'success' }}
+    if: ${{ !cancelled() && needs.index.result == 'success' && needs.index.outputs.readme == 'true' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     permissions:
@@ -271,6 +284,13 @@ jobs:
             echo "The README's list of the plugins is as it was." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          # A README pull request of a run before, whose merge failed, closed
+          # first, so that runs leave no pile of them.
+          gh pr list --repo "$REPO" --state open --json number,headRefName \
+            --jq '.[] | select(.headRefName | startswith("readme/")) | .number' |
+            while read -r open; do
+              gh pr close "$open" --repo "$REPO" --delete-branch --comment "Replaced by a later run's list."
+            done
           branch="readme/$RUN"
           git switch --quiet -c "$branch"
           cp "$RUNNER_TEMP/readme/README.md" README.md

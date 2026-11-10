@@ -5,8 +5,9 @@ name: Pull request
 # `main` as it is now. It runs the workflow of `main` whatever the pull
 # request changes, as `pull_request_target` does: the pull request's files
 # are read as data, and the plugins' code runs in Sleip's sandbox, in a job
-# that holds no right of the repository's. The report is the pull request's comment; a version that
-# asks for nothing new merges by itself, and is released at once. Of the
+# that holds no right of the repository's. The report is the pull request's
+# comment; a version that asks for nothing new merges by itself, and its
+# release, its index and the site are dispatched to a run of their own. Of the
 # pull requests into main alone: a branch's workflow is the one that runs
 # for a pull request into it, and the workflows of main alone are kept.
 # The jobs that hold the repository's rights take the untrusted job's
@@ -93,7 +94,7 @@ jobs:
             {
               echo "### Sleip's check: it could not run"
               echo
-              jq -r 'select(.event == "error") | "- `" + (.message | gsub("[`@<[:cntrl:]]"; " ") | .[0:500]) + "`"' events.ndjson | head -n 50
+              jq -rs 'map(select(.event == "error"))[:50][] | "- `" + (.message | gsub("[`@<[:cntrl:]]"; " ") | .[0:500]) + "`"' events.ndjson
             } > "$report"
           fi
           cat "$report" >> "$GITHUB_STEP_SUMMARY"
@@ -113,9 +114,12 @@ jobs:
     if: always() && needs.verify.result != 'cancelled' && needs.verify.result != 'skipped'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
+    # Of the publishing's dispatch too, which runs apart: a merge of the
+    # workflow's own token starts no workflow, a dispatch of it does.
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     outputs:
       merged: ${{ steps.merge.outputs.merged }}
     steps:
@@ -222,6 +226,10 @@ jobs:
           fi
           gh pr merge "$NUMBER" --repo "$REPO" --squash --match-head-commit "$HEAD"
           echo "merged=true" >> "$GITHUB_OUTPUT"
+          # The release of what merged by itself, its index and the site,
+          # in a run of their own, of main as it is: no artifact of this
+          # run, whose verify job ran the plugins' code, reaches them.
+          gh workflow run publish.yml --repo "$REPO" --ref main
 
       # After the merge's attempt, of its outcome: a pull request that was
       # to merge by itself and did not is told so.
@@ -244,22 +252,3 @@ jobs:
             } >> "$comment"
           fi
           gh pr comment "$NUMBER" --repo "$REPO" --body-file "$comment" --edit-last --create-if-none
-
-  # A merge of the workflow's own token starts no other workflow, so that
-  # the release of what merged by itself is made here, and its index: the
-  # called workflow, main's as this one is, takes the secrets, the index
-  # key of its environment among them, which it reaches of none else.
-  publish:
-    name: Publish
-    needs: report
-    if: needs.report.outputs.merged == 'true'
-    # Those that the called jobs ask for, the releases', GitHub Pages' and
-    # the schedule's, whose job runs of a schedule alone.
-    permissions:
-      contents: write
-      pages: write
-      id-token: write
-      pull-requests: write
-      actions: write
-    uses: ./.github/workflows/publish.yml
-    secrets: inherit

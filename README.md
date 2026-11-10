@@ -32,7 +32,7 @@ The plugins published, as the registry's signed index holds them, which its CI w
 ## What the pull request's check does
 
 - **The changes**: the pull request's own, since the commit that it shares with `main`, each judged against `main` as it is now, so that a branch made before another plugin's version merged needs no rebase for it; a plugin's file is a plain file, never a link nor a submodule; a file outside `plugins/`, the maintainer reviews.
-- **The owner**: the plugin's owner is the pull request's author, its GitHub account, or an organization that the author is a public member of; a push to the pull request of another account than the author's, the maintainer reviews.
+- **The owner**: the plugin's owner is the pull request's author, its GitHub account, or an organization that the author is a public member of; a pull request whose last push or event is another account's than its author's, the maintainer reviews.
 - **The name**: an owner and a name of lowercase letters, digits and `-`, from a letter, 64 characters at most each; `lokyr/*` is Lokyr's first-party plugins'; a name is unique across owners, as Lokyr knows a plugin by its name alone, so that `acme/hello` and `bob/hello` never meet, against `main`'s plugins and the pull request's together; the first-party plugins' names, as `tabs` or `search`, and those of the app's own commands, as `app`, `window` and `pane`, are Lokyr's.
 - **The versions published** stay as they were: a later version takes a version's place, or its yank, `yanked = true`.
 - **Each new version** is fetched at its tag, which must name its commit, a tag's name as git takes it and as no revision reads it, of its commit alone; its manifest must be of the plugin's name and of the version; it is checked as `sleip check` checks it, its tests run as `sleip test` runs them, and its archive is packaged.
@@ -41,7 +41,7 @@ The plugins published, as the registry's signed index holds them, which its CI w
 ## Merging
 
 - A new plugin, the maintainer reviews.
-- A new version that asks for nothing that the version published last did not, no capability, no host, path or variable of one, and no command in `[uses] commands`, merges by itself; one that asks for more, the maintainer reviews.
+- A new version that asks for nothing that the version published last, not yanked, did not, no capability, no host, path or variable of one, and no command in `[uses] commands`, merges by itself; one that asks for more, the maintainer reviews.
 - A yank merges by itself; a change of anything else, the maintainer reviews.
 - The workflows, their actions and `keys.json` are the maintainer's, as `.github/CODEOWNERS` says: a pull request that changes them waits for the maintainer's review, whoever opened it.
 
