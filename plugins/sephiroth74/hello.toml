@@ -36,3 +36,8 @@ version = "0.1.6"
 tag = "v0.1.6"
 commit = "b3ac8d592872b92adacd9f85fc78e7475d0209da"
 yanked = true
+
+[[versions]]
+version = "0.1.7"
+tag = "v0.1.7"
+commit = "9422add57435d849e938e7ceff051ae638ea84b1"
