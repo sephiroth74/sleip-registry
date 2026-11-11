@@ -24,6 +24,16 @@ on:
 
 permissions: {}
 
+# One run at a time, each to its end, so that a run's index never reads the
+# site while another deploys it, nor its README's list a main that another
+# run's pull request changed meanwhile: two merges a few seconds apart had
+# the second's index read pkg.lokyr.dev as the first deployed it, which
+# answered 503. A run that waits gives way to a later one, as GitHub keeps
+# one waiting, which releases, indexes and lists whatever main holds then.
+concurrency:
+  group: publish-runs
+  cancel-in-progress: false
+
 # No file of Git LFS fetched, as a package holds none.
 env:
   GIT_LFS_SKIP_SMUDGE: "1"
