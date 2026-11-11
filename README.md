@@ -13,6 +13,7 @@ The plugins published, as the registry's signed index holds them, which its CI w
 |---|---|---|---|
 | [sephiroth74/awake](https://pkg.lokyr.dev/plugins/sephiroth74/awake/) | 0.1.0 | Keeps the Mac awake from a button beside the window's buttons: always, or while a tab runs a program | keep-awake, process-read |
 | [sephiroth74/hello](https://pkg.lokyr.dev/plugins/sephiroth74/hello/) | 0.1.11 | The registry's plugin of its tests: its command, Say Hello, shows a notice. | clipboard-read, clipboard-write |
+| [sephiroth74/snap](https://pkg.lokyr.dev/plugins/sephiroth74/snap/) | 0.1.0 | An image of a terminal's text, in a frame as a macOS window's, to copy or to save | clipboard-write, process-read, terminal-read |
 <!-- plugins:end -->
 
 ## Publishing a version
