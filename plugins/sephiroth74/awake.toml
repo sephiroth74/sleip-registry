@@ -1,0 +1,6 @@
+repository = "https://github.com/sephiroth74/sleip-awake"
+
+[[versions]]
+version = "0.1.0"
+tag = "v0.1.0"
+commit = "07c8216824629be0c4a2926815f15955fed8dfcc"
