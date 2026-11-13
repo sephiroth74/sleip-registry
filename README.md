@@ -1,6 +1,6 @@
 # Sleip's registry
 
-The registry of plugins for [Lokyr](https://lokyr.dev), a terminal for macOS, from which Lokyr's package manager, Sleip, installs them. Lokyr 1.0 is on its way; its plugins' API is experimental until then.
+The registry of plugins for [Lokyr](https://lokyr.dev), a terminal for macOS, from which Lokyr's package manager, Sleip, installs them.
 
 A plugin lives in a public git repository of its own. This repository holds a file of each plugin, `plugins/<owner>/<name>.toml`, of its published versions, each of its repository's tag and the tag's commit; publishing a version is a pull request that adds it, which this repository's CI checks, packages and, once merged, releases.
 
