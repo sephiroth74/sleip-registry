@@ -4,3 +4,8 @@ repository = "https://github.com/sephiroth74/sleip-snap"
 version = "0.1.0"
 tag = "v0.1.0"
 commit = "a721747eb6da7b7db08c884a37048700350e4835"
+
+[[versions]]
+version = "0.2.0"
+tag = "v0.2.0"
+commit = "3cc60538a219deb9163a4984b395697da04033b7"
