@@ -14,6 +14,7 @@ The plugins published, as the registry's signed index holds them, which its CI w
 | [sephiroth74/awake](https://pkg.lokyr.dev/plugins/sephiroth74/awake/) | 0.1.0 | Keeps the Mac awake from a button beside the window's buttons: always, or while a tab runs a program | keep-awake, process-read |
 | [sephiroth74/font-picker](https://pkg.lokyr.dev/plugins/sephiroth74/font-picker/) | 0.1.0 | Chooses the terminal's font from the system's monospaced families, each previewed as you move to it | appearance-write |
 | [sephiroth74/hello](https://pkg.lokyr.dev/plugins/sephiroth74/hello/) | 0.1.11 | The registry's plugin of its tests: its command, Say Hello, shows a notice. | clipboard-read, clipboard-write |
+| [sephiroth74/open-in-editor](https://pkg.lokyr.dev/plugins/sephiroth74/open-in-editor/) | 0.1.0 | A pane's scrollback, or a command's output, in your text editor, its long lines whole, to search, copy or keep | history-read, open, terminal-read |
 | [sephiroth74/snap](https://pkg.lokyr.dev/plugins/sephiroth74/snap/) | 0.3.0 | An image of a terminal's text, of the selection, the screen or a command and its output, in a frame as a macOS window's, to copy or to save | clipboard-write, history-read, process-read, terminal-read |
 <!-- plugins:end -->
 
