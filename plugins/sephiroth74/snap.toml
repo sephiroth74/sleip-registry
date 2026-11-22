@@ -9,3 +9,8 @@ commit = "a721747eb6da7b7db08c884a37048700350e4835"
 version = "0.2.0"
 tag = "v0.2.0"
 commit = "3cc60538a219deb9163a4984b395697da04033b7"
+
+[[versions]]
+version = "0.3.0"
+tag = "v0.3.0"
+commit = "d676650f8fd66af8eacb7ccd9d8c3a7b93bb519e"
